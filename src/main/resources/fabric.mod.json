@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "yatwinkle",
+  "version": "${version}",
+  "name": "yatwinkle",
+  "description": "",
+  "authors": ["yatwinkle"],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "icon": "assets/yatwinkle/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "yatwinkle.ClientMain"
+    ]
+  },
+  "mixins": [
+    "yatwinkle.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric": "*",
+    "minecraft": "${minecraft_version}"
+  }
+}
