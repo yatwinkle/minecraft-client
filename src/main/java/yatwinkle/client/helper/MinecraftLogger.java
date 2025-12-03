@@ -8,9 +8,9 @@ import java.util.Objects;
 public interface MinecraftLogger extends MinecraftInstances {
 
     Text prefix =
-            Text.literal("[").formatted(Formatting.GRAY)
+            Text.literal("(").formatted(Formatting.GRAY)
                     .append(Text.literal("yatwinkle").formatted(Formatting.RED))
-                    .append(Text.literal("] -> ").formatted(Formatting.GRAY));
+                    .append(Text.literal(") -> ").formatted(Formatting.GRAY));
 
     default void chat(String message, Formatting formatting) {
         Text text = prefix.copy().append(Text.literal(message).formatted(formatting));

@@ -42,6 +42,9 @@ dependencies {
 
     // https://modrinth.com/mod/iris
     modImplementation "maven.modrinth:iris:1.8.8+${project.minecraft_version}-fabric"
+
+    // https://github.com/lightbend/config
+    implementation 'com.typesafe:config:1.4.5'
 }
 
 processResources {

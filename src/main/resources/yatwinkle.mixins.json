@@ -6,9 +6,11 @@
   "mixins": [
   ],
   "client": [
-    "client.KeyboardMixin",
     "accessor.ClientPlayerEntityAccessor",
-    "network.ClientPlayerEntityMixin"
+    "client.KeyboardMixin",
+    "network.ClientPlayerEntityMixin",
+    "network.ClientPlayNetworkHandlerMixin",
+    "screen.ChatInputSuggestorMixin"
   ],
   "injectors": {
     "defaultRequire": 1

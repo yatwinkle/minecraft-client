@@ -1,6 +1,7 @@
 package yatwinkle.injection.wrapper.network;
 
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import yatwinkle.client.feature.event.network.ChatEvent;
 import yatwinkle.client.feature.event.network.EventPlayerTick;
 import yatwinkle.client.service.event.AtomicBus;
 

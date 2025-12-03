@@ -7,9 +7,13 @@ public enum Category {
     RENDER("Render"),
     MISC("Misc");
 
-    public final String name;
+    private final String displayName;
 
-    Category(String name) {
-        this.name = name;
+    Category(String displayName) {
+        this.displayName = displayName;
+    }
+
+    public String getDisplayName() {
+        return displayName;
     }
 }
