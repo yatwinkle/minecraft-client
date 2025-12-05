@@ -19,9 +19,7 @@ public interface MinecraftLogger extends MinecraftInstances {
 
     default void info(String message) { chat(message, Formatting.WHITE); }
 
-    default void success(String message) { chat(message, Formatting.GREEN); }
-
-    default void warning(String message) { chat(message, Formatting.YELLOW); }
+    default void warn(String message) { chat(message, Formatting.YELLOW); }
 
     default void error(String message) { chat(message, Formatting.RED); }
 }

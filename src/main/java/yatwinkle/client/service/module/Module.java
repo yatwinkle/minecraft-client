@@ -1,7 +1,6 @@
 package yatwinkle.client.service.module;
 
 import yatwinkle.client.helper.MinecraftLogger;
-import yatwinkle.client.service.config.ConfigAware;
 import yatwinkle.client.service.config.ConfigManager;
 import yatwinkle.client.service.event.AtomicBus;
 import yatwinkle.client.service.event.Event;
@@ -16,7 +15,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public abstract class Module implements MinecraftLogger, ConfigAware {
+public abstract class Module implements MinecraftLogger {
 
     private final String id;
     private final String displayName;
@@ -68,28 +67,28 @@ public abstract class Module implements MinecraftLogger, ConfigAware {
     }
 
     protected BoolOption bool(String id, String name, String description, boolean defaultValue) {
-        return trackConfig(register(new BoolOption(id, name, description, defaultValue)));
+        return register(new BoolOption(id, name, description, defaultValue));
     }
 
     protected IntOption number(String id, String name, String description, int value, int min, int max, int step) {
-        return trackConfig(register(new IntOption(id, name, description, value, min, max, step)));
+        return register(new IntOption(id, name, description, value, min, max, step));
     }
 
     protected DoubleOption number(String id, String name, String description, double value, double min, double max, double step) {
-        return trackConfig(register(new DoubleOption(id, name, description, value, min, max, step)));
+        return register(new DoubleOption(id, name, description, value, min, max, step));
     }
 
     protected <T extends Enum<T>> EnumOption<T> mode(String id, String name, String description, T defaultValue) {
-        return trackConfig(register(new EnumOption<>(id, name, description, defaultValue)));
+        return register(new EnumOption<>(id, name, description, defaultValue));
     }
 
     @SafeVarargs
     protected final <T extends Enum<T>> MultiEnumOption<T> multi(String id, String name, String description, T... defaultValues) {
-        return trackConfig(register(new MultiEnumOption<>(id, name, description, defaultValues)));
+        return register(new MultiEnumOption<>(id, name, description, defaultValues));
     }
 
     protected <T extends Enum<T>> MultiEnumOption<T> multi(String id, String name, String description, Class<T> enumClass) {
-        return trackConfig(register(new MultiEnumOption<>(id, name, description, enumClass)));
+        return register(new MultiEnumOption<>(id, name, description, enumClass));
     }
 
     private <S extends AbstractOption<?>> S register(S setting) {

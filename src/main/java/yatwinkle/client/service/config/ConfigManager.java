@@ -2,23 +2,35 @@ package yatwinkle.client.service.config;
 
 import com.typesafe.config.*;
 import net.fabricmc.loader.api.FabricLoader;
-import yatwinkle.client.helper.MinecraftLogger;
+import yatwinkle.client.helper.ClientLogger;
 import yatwinkle.client.service.module.Module;
 import yatwinkle.client.service.module.Modules;
 import yatwinkle.client.service.setting.AbstractOption;
 import yatwinkle.client.service.setting.impl.*;
 
+import java.awt.*;
 import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
-public final class ConfigManager implements MinecraftLogger, AutoCloseable {
+public final class ConfigManager implements ClientLogger, AutoCloseable {
 
-    private static final String CONFIG_FILE_NAME = "default.conf";
-    private static final long AUTO_SAVE_DELAY_MS = 5000;
+    private static final String DEFAULT_CONFIG = "default";
+    private static final String EXTENSION = ".conf";
+    private static final String SETTINGS_KEY = "settings";
+    private static final String ENABLED_KEY = "enabled";
+    private static final String KEYBIND_KEY = "key";
+    private static final String MODULES_BLOCK = "modules";
+
+    private static final Pattern VALID_CONFIG_NAME = Pattern.compile("^[a-zA-Z0-9_-]+$");
 
     private static final ConfigRenderOptions RENDER_OPTIONS = ConfigRenderOptions.defaults()
             .setOriginComments(false)
@@ -26,147 +38,179 @@ public final class ConfigManager implements MinecraftLogger, AutoCloseable {
             .setFormatted(true)
             .setJson(false);
 
-    private static volatile ConfigManager instance;
+    private static ConfigManager instance;
 
-    private final Path configPath;
-    private final AtomicReference<Config> currentConfig;
-    private final AtomicBoolean dirty;
-    private final ScheduledExecutorService saveExecutor;
-    private final ScheduledFuture<?> autoSaveTask;
+    private final Path configDir;
     private final Modules modules;
+    private final ExecutorService ioExecutor;
+    private final AtomicBoolean dirty = new AtomicBoolean(false);
 
     private ConfigManager(Modules modules) {
         this.modules = modules;
-        this.configPath = FabricLoader.getInstance().getConfigDir().resolve(CONFIG_FILE_NAME);
-        this.currentConfig = new AtomicReference<>(ConfigFactory.empty());
-        this.dirty = new AtomicBoolean(false);
+        this.configDir = FabricLoader.getInstance().getConfigDir().resolve("yatwinkle");
 
-        this.saveExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "ConfigManager-AutoSave");
+        try {
+            Files.createDirectories(configDir);
+        } catch (IOException e) {
+            error("Failed to create config directory!", e);
+        }
+
+        this.ioExecutor = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "Yatwinkle-Config-IO");
             t.setDaemon(true);
             return t;
         });
 
-        load();
-
-        this.autoSaveTask = saveExecutor.scheduleWithFixedDelay(
-                this::autoSave, AUTO_SAVE_DELAY_MS, AUTO_SAVE_DELAY_MS, TimeUnit.MILLISECONDS);
+        loadConfig(DEFAULT_CONFIG);
     }
 
     public static void init(Modules modules) {
         if (instance == null) {
-            synchronized (ConfigManager.class) {
-                if (instance == null) {
-                    instance = new ConfigManager(modules);
-                }
-            }
+            instance = new ConfigManager(modules);
         }
     }
 
     public static ConfigManager get() {
-        ConfigManager local = instance;
-        if (local == null) {
+        if (instance == null) {
             throw new IllegalStateException("ConfigManager not initialized!");
         }
-        return local;
+        return instance;
     }
 
     public static ConfigManager getIfInit() {
         return instance;
     }
 
-    public void load() {
-        try {
-            if (Files.exists(configPath)) {
-                Config loaded = ConfigFactory.parseFile(configPath.toFile());
-                currentConfig.set(loaded);
-                applyConfigToModules(loaded);
-            } else {
-                currentConfig.set(ConfigFactory.empty());
+    public void saveDefaultConfig() {
+        saveConfig(DEFAULT_CONFIG);
+    }
+
+    public void loadConfig(String name) {
+        if (!isValidConfigName(name)) {
+            error("Invalid config name: " + name);
+            return;
+        }
+
+        Path path = getPath(name);
+        if (!Files.exists(path)) {
+            if (DEFAULT_CONFIG.equals(name)) {
+                return;
             }
+            error("Config file not found: " + name);
+            return;
+        }
+
+        try {
+            Config loadedConfig = ConfigFactory.parseFile(path.toFile());
+            applyConfigToModules(loadedConfig);
+            dirty.set(false);
         } catch (Exception e) {
-            currentConfig.set(ConfigFactory.empty());
+            error("Failed to parse config: " + name, e);
         }
     }
 
-    public CompletableFuture<Void> saveAsync() {
-        return CompletableFuture.runAsync(() -> {
-            try { saveInternal(); }
-            catch (IOException ignored) { }
-        }, saveExecutor);
-    }
-
-    public void save() {
-        try { saveInternal(); }
-        catch (IOException ignored) { }
-    }
-
-    private void saveInternal() throws IOException {
-        Config config = buildConfigFromModules();
-        String rendered = config.root().render(RENDER_OPTIONS);
-
-        Path tempFile = configPath.resolveSibling(configPath.getFileName() + ".tmp");
-        Files.writeString(tempFile, rendered,
-                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-        Files.move(tempFile, configPath,
-                StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-
-        currentConfig.set(config);
-        dirty.set(false);
-    }
-
-    public void markDirty() { dirty.set(true); }
-
-    private void autoSave() {
-        if (dirty.get()) {
-            try {
-                saveInternal();
-                dirty.set(false);
-            } catch (IOException ignored) { }
+    public void saveConfig(String name) {
+        if (!isValidConfigName(name)) {
+            error("Invalid config name: " + name);
+            return;
         }
+
+        Config snapshot = buildConfigFromModules();
+
+        CompletableFuture.runAsync(() -> writeConfigToFile(name, snapshot), ioExecutor)
+                .exceptionally(ex -> {
+                    error("Failed to save config: " + name, ex);
+                    return null;
+                })
+                .thenRun(() -> dirty.set(false));
+    }
+
+    public List<String> listConfigs() {
+        try (Stream<Path> stream = Files.list(configDir)) {
+            return stream
+                    .filter(p -> p.toString().endsWith(EXTENSION))
+                    .map(p -> p.getFileName().toString().replace(EXTENSION, ""))
+                    .filter(this::isValidConfigName)
+                    .sorted()
+                    .toList();
+        } catch (IOException e) {
+            error("Failed to list configs", e);
+            return Collections.emptyList();
+        }
+    }
+
+    public void markDirty() {
+        dirty.set(true);
+    }
+
+    public boolean isDirty() {
+        return dirty.get();
+    }
+
+    @Override
+    public void close() {
+        if (isDirty()) {
+            saveDefaultConfig();
+        }
+
+        ioExecutor.shutdown();
+        try {
+            if (!ioExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                ioExecutor.shutdownNow();
+                warn("Config IO executor did not terminate gracefully");
+            }
+        } catch (InterruptedException e) {
+            ioExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private boolean isValidConfigName(String name) {
+        return name != null && VALID_CONFIG_NAME.matcher(name).matches();
+    }
+
+    private void writeConfigToFile(String name, Config config) {
+        try {
+            String rendered = config.root().render(RENDER_OPTIONS);
+            Path targetPath = getPath(name);
+            Path tempPath = targetPath.resolveSibling(targetPath.getFileName() + ".tmp");
+
+            Files.writeString(tempPath, rendered, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            Files.move(tempPath, targetPath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to write config file: " + name, e);
+        }
+    }
+
+    private Path getPath(String name) {
+        String safeName = name.endsWith(EXTENSION) ? name : name + EXTENSION;
+        return configDir.resolve(safeName);
     }
 
     private Config buildConfigFromModules() {
-        Map<String, Object> configMap = new HashMap<>();
-        for (Module module : modules.getAll()) {
-            Map<String, Object> moduleData = new HashMap<>();
-            moduleData.put("enabled", module.isActive());
-            moduleData.put("key", module.getKey());
+        Map<String, Object> modulesMap = new LinkedHashMap<>();
 
-            Map<String, Object> settingsData = new HashMap<>();
+        for (Module module : modules.getAll()) {
+            Map<String, Object> moduleData = new LinkedHashMap<>();
+            moduleData.put(ENABLED_KEY, module.isActive());
+            moduleData.put(KEYBIND_KEY, module.getKey());
+
+            Map<String, Object> settingsData = new LinkedHashMap<>();
             for (AbstractOption<?> option : module.getSettings()) {
-                Object value = serializeOption(option);
-                if (value != null) settingsData.put(option.getId(), value);
+                Object serializedValue = serializeOption(option);
+                if (serializedValue != null) {
+                    settingsData.put(option.getId(), serializedValue);
+                }
             }
-            if (!settingsData.isEmpty()) moduleData.put("settings", settingsData);
-            configMap.put(module.getId(), moduleData);
+
+            if (!settingsData.isEmpty()) {
+                moduleData.put(SETTINGS_KEY, settingsData);
+            }
+
+            modulesMap.put(module.getId(), moduleData);
         }
-        return ConfigFactory.parseMap(Collections.singletonMap("modules", configMap));
-    }
 
-    private void applyConfigToModules(Config config) {
-        if (!config.hasPath("modules")) return;
-        Config modulesConfig = config.getConfig("modules");
-
-        for (Module module : modules.getAll()) {
-            String id = module.getId();
-            if (!modulesConfig.hasPath(id)) continue;
-
-            try {
-                Config mc = modulesConfig.getConfig(id);
-                if (mc.hasPath("enabled")) module.setState(mc.getBoolean("enabled"));
-                if (mc.hasPath("key")) module.setKey(mc.getInt("key"));
-                if (mc.hasPath("settings")) applySettings(module, mc.getConfig("settings"));
-            } catch (Exception ignored) { }
-        }
-    }
-
-    private void applySettings(Module module, Config settings) {
-        for (AbstractOption<?> opt : module.getSettings()) {
-            if (!settings.hasPath(opt.getId())) continue;
-            try { deserializeOption(opt, settings, opt.getId()); }
-            catch (Exception ignored) { }
-        }
+        return ConfigFactory.parseMap(Collections.singletonMap(MODULES_BLOCK, modulesMap));
     }
 
     private Object serializeOption(AbstractOption<?> option) {
@@ -174,11 +218,51 @@ public final class ConfigManager implements MinecraftLogger, AutoCloseable {
             case BoolOption o -> o.getAsBoolean();
             case IntOption o -> o.getAsInt();
             case DoubleOption o -> o.getAsDouble();
+            case StringOption o -> o.get();
+            case ColorOption o -> o.getInt();
             case EnumOption<?> o -> o.get().name();
             case MultiEnumOption<?> o -> o.get().stream()
-                    .map(e -> ((Enum<?>) e).name()).toList();
+                    .map(Enum::name)
+                    .toList();
             default -> null;
         };
+    }
+
+    private void applyConfigToModules(Config config) {
+        if (!config.hasPath(MODULES_BLOCK)) return;
+
+        Config modulesConfig = config.getConfig(MODULES_BLOCK);
+
+        for (Module module : modules.getAll()) {
+            String id = module.getId();
+            if (!modulesConfig.hasPath(id)) continue;
+
+            try {
+                Config mc = modulesConfig.getConfig(id);
+
+                if (mc.hasPath(SETTINGS_KEY)) {
+                    applySettings(module, mc.getConfig(SETTINGS_KEY));
+                }
+
+                if (mc.hasPath(KEYBIND_KEY)) {
+                    module.setKey(mc.getInt(KEYBIND_KEY));
+                }
+
+                if (mc.hasPath(ENABLED_KEY)) {
+                    module.setState(mc.getBoolean(ENABLED_KEY));
+                }
+            } catch (Exception e) {
+                error("Error applying config for module: " + id, e);
+            }
+        }
+    }
+
+    private void applySettings(Module module, Config settings) {
+        for (AbstractOption<?> opt : module.getSettings()) {
+            if (!settings.hasPath(opt.getId())) continue;
+
+            deserializeOption(opt, settings, opt.getId());
+        }
     }
 
     private void deserializeOption(AbstractOption<?> option, Config config, String key) {
@@ -186,49 +270,28 @@ public final class ConfigManager implements MinecraftLogger, AutoCloseable {
             case BoolOption o -> o.set(config.getBoolean(key));
             case IntOption o -> o.set(config.getInt(key));
             case DoubleOption o -> o.set(config.getDouble(key));
+            case StringOption o -> o.set(config.getString(key));
+            case ColorOption o -> o.set(new Color(config.getInt(key), true));
             case EnumOption<?> o -> deserializeEnum(o, config.getString(key));
             case MultiEnumOption<?> o -> deserializeMultiEnum(o, config.getStringList(key));
-            default -> {}
+            default -> { }
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private <T extends Enum<T>> void deserializeEnum(EnumOption<?> option, String name) {
-        EnumOption<T> opt = (EnumOption<T>) option;
-        try {
-            opt.set(Enum.valueOf(opt.get().getDeclaringClass(), name));
-        } catch (IllegalArgumentException ignored) {}
+    private <E extends Enum<E>> void deserializeEnum(EnumOption<E> option, String name)
+            throws IllegalArgumentException {
+        option.set(Enum.valueOf(option.get().getDeclaringClass(), name));
     }
 
-    @SuppressWarnings("unchecked")
-    private <T extends Enum<T>> void deserializeMultiEnum(MultiEnumOption<?> option, List<String> names) {
-        MultiEnumOption<T> opt = (MultiEnumOption<T>) option;
-        Class<T> enumClass = opt.getEnumClass();
+    private <E extends Enum<E>> void deserializeMultiEnum(MultiEnumOption<E> option, List<String> names)
+            throws IllegalArgumentException {
+        Class<E> enumClass = option.getEnumClass();
+        Set<E> values = EnumSet.noneOf(enumClass);
 
-        Set<T> values = EnumSet.noneOf(enumClass);
         for (String name : names) {
-            try { values.add(Enum.valueOf(enumClass, name)); }
-            catch (IllegalArgumentException ignored) {}
+            values.add(Enum.valueOf(enumClass, name));
         }
-        opt.set(values);
+
+        option.set(values);
     }
-
-    @Override
-    public void close() {
-        if (autoSaveTask != null) autoSaveTask.cancel(false);
-        if (dirty.get()) save();
-
-        saveExecutor.shutdown();
-        try {
-            if (!saveExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                saveExecutor.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            saveExecutor.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    public Path getConfigPath() { return configPath; }
-    public Config getCurrentConfig() { return currentConfig.get(); }
 }
