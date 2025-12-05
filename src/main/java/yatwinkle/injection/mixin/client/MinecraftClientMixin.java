@@ -20,4 +20,9 @@ public class MinecraftClientMixin {
     private void onStop(CallbackInfo ci) {
         MinecraftClientWrapper.onDisconnect();
     }
+
+    @Inject(method = "onResolutionChanged", at = @At("TAIL"))
+    private void onResolutionChanged(CallbackInfo ci) {
+        MinecraftClientWrapper.onResolutionChanged();
+    }
 }

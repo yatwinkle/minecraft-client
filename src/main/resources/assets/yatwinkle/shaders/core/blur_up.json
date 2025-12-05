@@ -1,0 +1,28 @@
+{
+  "vertex": "yatwinkle:core/blur",
+  "fragment": "yatwinkle:core/blur_up",
+  "samplers": [
+    {
+      "name": "uTexture"
+    }
+  ],
+  "uniforms": [
+    {
+      "name": "uHalfTexelSize",
+      "type": "float",
+      "count": 2,
+      "values": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "uOffset",
+      "type": "float",
+      "count": 1,
+      "values": [
+        0.0
+      ]
+    }
+  ]
+}

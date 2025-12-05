@@ -12,6 +12,7 @@
     "hud.InGameHudMixin",
     "network.ClientPlayerEntityMixin",
     "network.ClientPlayNetworkHandlerMixin",
+    "render.GameRendererMixin",
     "screen.ChatInputSuggestorMixin"
   ],
   "injectors": {
