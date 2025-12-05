@@ -1,39 +1,36 @@
 package yatwinkle.client.service.setting.impl;
 
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import yatwinkle.client.service.setting.AbstractOption;
 
 public class BoolOption extends AbstractOption<Boolean> implements BooleanSupplier {
-
-    private final AtomicBoolean value;
+    private boolean value;
 
     public BoolOption(String id, String name, String description, boolean defaultValue) {
         super(id, name, description, defaultValue);
-        this.value = new AtomicBoolean(defaultValue);
+        this.value = defaultValue;
     }
 
     @Override
-    public boolean getAsBoolean() { return value.get(); }
+    public boolean getAsBoolean() {
+        return value;
+    }
 
     @Override
-    public Boolean get() { return value.get(); }
+    public Boolean get() {
+        return value;
+    }
 
     @Override
-    protected void setValueInternal(Boolean newValue) {
-        boolean oldValue = value.getAndSet(newValue);
-        if (oldValue != newValue) {
-            notifyListeners(newValue);
-        }
+    public void setValueInternal(Boolean newValue) {
+        boolean val = newValue;
+        if (this.value == val) return;
+
+        this.value = val;
+        notifyListeners(val);
     }
 
     public void toggle() {
-        boolean prev, next;
-        do {
-            prev = value.get();
-            next = !prev;
-        } while (!value.compareAndSet(prev, next));
-        notifyListeners(next);
+        setValueInternal(!value);
     }
-
 }

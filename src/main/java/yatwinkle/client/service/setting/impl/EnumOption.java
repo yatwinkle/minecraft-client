@@ -4,18 +4,16 @@ import yatwinkle.client.service.setting.AbstractOption;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
 
 public class EnumOption<T extends Enum<T>> extends AbstractOption<T> {
-
-    private final AtomicReference<T> value;
+    private T value;
     private final T[] values;
     private final List<T> unmodifiableModes;
 
     public EnumOption(String id, String name, String description, T defaultValue) {
         super(id, name, description, defaultValue);
-        this.value = new AtomicReference<>(defaultValue);
-        this.values = (T[]) defaultValue.getDeclaringClass().getEnumConstants();
+        this.value = defaultValue;
+        this.values = defaultValue.getDeclaringClass().getEnumConstants();
         this.unmodifiableModes = Collections.unmodifiableList(Arrays.asList(values));
 
         if (values.length < 2) {
@@ -23,26 +21,31 @@ public class EnumOption<T extends Enum<T>> extends AbstractOption<T> {
         }
     }
 
-    @Override public T get() { return value.get(); }
+    @Override
+    public T get() { return value; }
 
     @Override
     protected void setValueInternal(T newValue) {
-        T oldValue = value.getAndSet(newValue);
-        if (oldValue != newValue) {
-            notifyListeners(newValue);
-        }
+        if (this.value == newValue) return;
+        this.value = newValue;
+        notifyListeners(newValue);
     }
 
     public void next() {
-        T newValue = value.updateAndGet(c -> values[(c.ordinal() + 1) % values.length]);
-        notifyListeners(newValue);
+        int nextIndex = (value.ordinal() + 1) % values.length;
+        setValueInternal(values[nextIndex]);
     }
 
     public void previous() {
-        T newValue = value.updateAndGet(c -> values[(c.ordinal() - 1 + values.length) % values.length]);
-        notifyListeners(newValue);
+        int prevIndex = (value.ordinal() - 1 + values.length) % values.length;
+        setValueInternal(values[prevIndex]);
     }
 
-    public boolean is(T variant) { return value.get() == variant; }
-    public List<T> getModes() { return unmodifiableModes; }
+    public boolean is(T variant) {
+        return value == variant;
+    }
+
+    public List<T> getModes() {
+        return unmodifiableModes;
+    }
 }

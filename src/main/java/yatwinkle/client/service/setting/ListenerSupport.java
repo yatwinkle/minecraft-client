@@ -1,17 +1,19 @@
 package yatwinkle.client.service.setting;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
 public final class ListenerSupport<T> {
 
-    private final List<Consumer<T>> listeners = new CopyOnWriteArrayList<>();
+    private final List<Consumer<T>> listeners = new ArrayList<>();
 
     public void add(Consumer<T> listener) {
         Objects.requireNonNull(listener, "Listener cannot be null");
-        listeners.add(listener);
+        if (!listeners.contains(listener)) {
+            listeners.add(listener);
+        }
     }
 
     public boolean remove(Consumer<T> listener) {
@@ -19,8 +21,10 @@ public final class ListenerSupport<T> {
     }
 
     public void notify(T value) {
-        for (Consumer<T> listener : listeners) {
-            listener.accept(value);
+        if (listeners.isEmpty()) return;
+
+        for (int i = listeners.size() - 1; i >= 0; i--) {
+            listeners.get(i).accept(value);
         }
     }
 

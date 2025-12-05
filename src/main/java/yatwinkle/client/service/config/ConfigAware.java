@@ -7,7 +7,7 @@ public interface ConfigAware {
 
     default <T, O extends AbstractOption<T>> O trackConfig(O option) {
         option.onChange(value -> {
-            ConfigManager manager = ConfigManager.getIfInitialized();
+            ConfigManager manager = ConfigManager.getIfInit();
             if (manager != null) {
                 manager.markDirty();
             }
@@ -18,7 +18,7 @@ public interface ConfigAware {
     default <T, O extends AbstractOption<T>> O trackConfigWithCallback(O option, Consumer<T> callback) {
         option.onChange(value -> {
             callback.accept(value);
-            ConfigManager manager = ConfigManager.getIfInitialized();
+            ConfigManager manager = ConfigManager.getIfInit();
             if (manager != null) {
                 manager.markDirty();
             }

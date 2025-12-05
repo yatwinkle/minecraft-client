@@ -71,7 +71,7 @@ public final class ConfigManager implements MinecraftLogger, AutoCloseable {
         return local;
     }
 
-    public static ConfigManager getIfInitialized() {
+    public static ConfigManager getIfInit() {
         return instance;
     }
 
