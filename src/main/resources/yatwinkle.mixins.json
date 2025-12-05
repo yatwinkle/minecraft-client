@@ -9,6 +9,7 @@
     "accessor.ClientPlayerEntityAccessor",
     "client.KeyboardMixin",
     "client.MinecraftClientMixin",
+    "hud.InGameHudMixin",
     "network.ClientPlayerEntityMixin",
     "network.ClientPlayNetworkHandlerMixin",
     "screen.ChatInputSuggestorMixin"
